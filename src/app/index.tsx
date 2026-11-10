@@ -1,94 +1,164 @@
+import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Operation = '+' | '-' | '×' | '/';
+type QuizMode = 'operations' | 'comparison';
+
+type Choice = {
+  value: string;
+  label: string;
+};
 
 type Question = {
-  first: number;
-  second: number;
-  operation: Operation;
-  answer: number;
-  choices: number[];
+  instruction: string;
+  prompt: string;
+  answer: string;
+  choices: Choice[];
 };
 
 function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function createQuestion(): Question {
+function shuffle<T>(values: T[]) {
+  for (let index = values.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(0, index);
+    [values[index], values[swapIndex]] = [values[swapIndex], values[index]];
+  }
+  return values;
+}
+
+function createChoices(answer: string, candidates: string[]): Choice[] {
+  const values = new Set([answer]);
+
+  while (values.size < 3) {
+    values.add(candidates[randomInt(0, candidates.length - 1)]);
+  }
+
+  return shuffle(Array.from(values)).map((value) => ({ value, label: value }));
+}
+
+function createOperationQuestion(): Question {
   const operations: Operation[] = ['+', '-', '×', '/'];
   const operation = operations[randomInt(0, operations.length - 1)];
-  let firstMin = 0;
-  let firstMax = 100;
-  if (operation === '×') {
-    firstMax = 10;
-  } else if (operation === '/') {
-    firstMin = 1;
-    firstMax = 10;
-  }  
-  let first = randomInt(firstMin, firstMax);
-  let secondMin = 0;
-  let secondMax = 100;
-  if (operation === '×') {
-    secondMax = 10;
-  } else if (operation === '/') {
-    secondMin = 1;
-    secondMax = 10;
-  }
-  let second = randomInt(secondMin, secondMax);
+  let first: number;
+  let second: number;
+  let answer: number;
 
-  if (operation === '-' && second > first) {
-    [first, second] = [second, first];
-  }
-
-  let answer =
-    operation === '+' ? first + second : operation === '-' ? first - second : first * second;
   if (operation === '/') {
-    let tmp = answer;
-    answer = first;
-    first = tmp;
-  }
-  const maxAnswer = operation === '+' ? 200 : operation === '/' ? 10 : 100;
-  const choices = new Set([answer]);
+    second = randomInt(1, 10);
+    answer = randomInt(1, 10);
+    first = second * answer;
+  } else {
+    const operandMax = operation === '×' ? 10 : 100;
+    first = randomInt(0, operandMax);
+    second = randomInt(0, operandMax);
 
-  while (choices.size < 3) {
-    const distance = randomInt(1, 12);
-    const direction = Math.random() < 0.5 ? -1 : 1;
-    let distractor = answer + distance * direction;
-
-    if (distractor < 0 || distractor > maxAnswer) {
-      distractor = answer - distance * direction;
-    }
-    if (distractor < 0 || distractor > maxAnswer || choices.has(distractor)) {
-      distractor = randomInt(0, maxAnswer);
+    if (operation === '-' && second > first) {
+      [first, second] = [second, first];
     }
 
-    choices.add(distractor);
+    answer = operation === '+' ? first + second : operation === '-' ? first - second : first * second;
   }
 
-  const shuffledChoices = Array.from(choices);
-  for (let index = shuffledChoices.length - 1; index > 0; index -= 1) {
-    const swapIndex = randomInt(0, index);
-    [shuffledChoices[index], shuffledChoices[swapIndex]] = [
-      shuffledChoices[swapIndex],
-      shuffledChoices[index],
-    ];
+  const maxAnswer = operation === '+' ? 200 : operation === '×' ? 100 : operation === '/' ? 10 : 100;
+  const candidates = Array.from({ length: maxAnswer + 1 }, (_, value) => String(value));
+
+  return {
+    instruction: 'РЕШИ ПРИМЕР',
+    prompt: `${first} ${operation} ${second}`,
+    answer: String(answer),
+    choices: createChoices(String(answer), candidates),
+  };
+}
+
+function createComparisonQuestion(): Question {
+  const questionType = randomInt(0, 2);
+
+  if (questionType === 0) {
+    const first = randomInt(0, 1000);
+    const second = randomInt(0, 1000);
+    const answer = first < second ? '<' : first > second ? '>' : '=';
+    const choices: Choice[] = shuffle([
+      { value: '<', label: '<  меньше' },
+      { value: '=', label: '=  равно' },
+      { value: '>', label: '>  больше' },
+    ]);
+
+    return {
+      instruction: 'ВЫБЕРИ ЗНАК',
+      prompt: `${first}   ?   ${second}`,
+      answer,
+      choices,
+    };
   }
 
-  return { first, second, operation, answer, choices: shuffledChoices };
+  if (questionType === 1) {
+    const first = randomInt(0, 100);
+    let second = randomInt(0, 100);
+    while (second === first) {
+      second = randomInt(0, 100);
+    }
+
+    const difference = Math.abs(first - second);
+    const answer = first < second ? `меньше на ${difference}` : `больше на ${difference}`;
+    const candidates = Array.from({ length: 100 }, (_, index) => index + 1).flatMap((value) => [
+      `меньше на ${value}`,
+      `больше на ${value}`,
+    ]);
+
+    return {
+      instruction: 'НА СКОЛЬКО ОТЛИЧАЮТСЯ?',
+      prompt: `${first} и ${second}`,
+      answer,
+      choices: createChoices(answer, candidates),
+    };
+  }
+
+  const factor = randomInt(2, 100);
+  const smaller = randomInt(1, Math.floor(100 / factor));
+  const larger = smaller * factor;
+  const isFirstSmaller = Math.random() < 0.5;
+  const first = isFirstSmaller ? smaller : larger;
+  const second = isFirstSmaller ? larger : smaller;
+  const answer = isFirstSmaller ? `меньше в ${factor} раз` : `больше в ${factor} раз`;
+  const candidates = Array.from({ length: 99 }, (_, index) => index + 2).flatMap((value) => [
+    `меньше в ${value} раз`,
+    `больше в ${value} раз`,
+  ]);
+
+  return {
+    instruction: 'ВО СКОЛЬКО РАЗ ОТЛИЧАЮТСЯ?',
+    prompt: `${first} и ${second}`,
+    answer,
+    choices: createChoices(answer, candidates),
+  };
 }
 
 export default function HomeScreen() {
-  const [question, setQuestion] = useState(createQuestion);
+  const [quizMode, setQuizMode] = useState<QuizMode>('operations');
+  const [question, setQuestion] = useState(createOperationQuestion);
   const [feedback, setFeedback] = useState<'correct' | 'try-again' | null>(null);
   const [score, setScore] = useState(0);
 
-  function chooseAnswer(choice: number) {
+  function selectQuiz(mode: QuizMode) {
+    if (mode === quizMode) {
+      return;
+    }
+
+    setQuizMode(mode);
+    setQuestion(mode === 'operations' ? createOperationQuestion() : createComparisonQuestion());
+    setFeedback(null);
+    setScore(0);
+  }
+
+  function chooseAnswer(choice: string) {
     if (choice === question.answer) {
       setScore((currentScore) => currentScore + 1);
       setFeedback('correct');
-      setQuestion(createQuestion());
+      setQuestion(quizMode === 'operations' ? createOperationQuestion() : createComparisonQuestion());
       return;
     }
 
@@ -100,23 +170,52 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <View>
-              <Text style={styles.eyebrow}>THE BRAIN GYM</Text>
-              <Text style={styles.title}>Math level 3</Text>
-            </View>
+            <Image
+              accessibilityLabel="Считайка"
+              source={require('@/assets/images/calc-logo.png')}
+              style={styles.logo}
+              contentFit="contain"
+            />
             <View style={styles.scoreBadge}>
               <Text style={styles.scoreLabel}>STARS</Text>
               <Text style={styles.scoreValue}>{score}</Text>
             </View>
           </View>
 
+          <View style={styles.quizSelector}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Сложение / умножение"
+              accessibilityState={{ selected: quizMode === 'operations' }}
+              onPress={() => selectQuiz('operations')}
+              style={[styles.quizOption, quizMode === 'operations' && styles.quizOptionSelected]}>
+              <Image
+                source={require('@/assets/images/sum-mult.png')}
+                style={styles.quizImage}
+                contentFit="contain"
+              />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Больше / меньше"
+              accessibilityState={{ selected: quizMode === 'comparison' }}
+              onPress={() => selectQuiz('comparison')}
+              style={[styles.quizOption, quizMode === 'comparison' && styles.quizOptionSelected]}>
+              <Image
+                source={require('@/assets/images/more-less.png')}
+                style={styles.quizImage}
+                contentFit="contain"
+              />
+            </Pressable>
+          </View>
+
           <View style={styles.questionPanel}>
             <View style={styles.questionLabelRow}>
               <View style={styles.questionDot} />
-              <Text style={styles.questionLabel}>YOUR QUESTION</Text>
+              <Text style={styles.questionLabel}>{question.instruction}</Text>
             </View>
-            <Text style={styles.questionText}>
-              {question.first} {question.operation} {question.second}
+            <Text style={[styles.questionText, question.prompt.length > 13 && styles.questionTextLong]}>
+              {question.prompt}
             </Text>
             <View style={styles.answerLine} />
           </View>
@@ -124,10 +223,10 @@ export default function HomeScreen() {
           <View style={styles.choices}>
             {question.choices.map((choice, index) => (
               <Pressable
-                key={`${question.first}-${question.operation}-${question.second}-${index}`}
+                key={`${question.prompt}-${choice.value}-${index}`}
                 accessibilityRole="button"
-                accessibilityLabel={`${String.fromCharCode(97 + index)}: ${choice}`}
-                onPress={() => chooseAnswer(choice)}
+                accessibilityLabel={`${String.fromCharCode(97 + index)}: ${choice.label}`}
+                onPress={() => chooseAnswer(choice.value)}
                 style={({ pressed }) => [styles.choiceButton, pressed && styles.choicePressed]}>
                 <View
                   style={[
@@ -140,7 +239,7 @@ export default function HomeScreen() {
                   ]}>
                   <Text style={styles.choiceLetterText}>{String.fromCharCode(97 + index)})</Text>
                 </View>
-                <Text style={styles.choiceText}>{choice}</Text>
+                <Text style={styles.choiceText}>{choice.label}</Text>
                 <Text style={styles.choiceArrow}>›</Text>
               </Pressable>
             ))}
@@ -184,23 +283,39 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     gap: 20,
   },
+  logo: {
+    width: '68%',
+    maxWidth: 220,
+    aspectRatio: 2,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
     marginBottom: 4,
   },
-  eyebrow: {
-    color: '#548167',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1.4,
-    marginBottom: 5,
+  quizSelector: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: '#DDEBE1',
+    borderRadius: 17,
+    padding: 4,
   },
-  title: {
-    color: '#183A2A',
-    fontSize: 32,
-    fontWeight: '900',
+  quizOption: {
+    flex: 1,
+    minHeight: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 13,
+    paddingHorizontal: 4,
+  },
+  quizOptionSelected: {
+    backgroundColor: '#295B40',
+  },
+  quizImage: {
+    width: 68,
+    height: 68,
   },
   scoreBadge: {
     minWidth: 68,
@@ -260,9 +375,12 @@ const styles = StyleSheet.create({
   },
   questionText: {
     color: '#183A2A',
-    fontSize: 48,
+    fontSize: 42,
     fontWeight: '900',
     textAlign: 'center',
+  },
+  questionTextLong: {
+    fontSize: 32,
   },
   answerLine: {
     width: 58,
@@ -313,7 +431,7 @@ const styles = StyleSheet.create({
   choiceText: {
     flex: 1,
     color: '#234A35',
-    fontSize: 23,
+    fontSize: 18,
     fontWeight: '800',
   },
   choiceArrow: {
