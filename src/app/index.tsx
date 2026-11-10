@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Operation = '+' | '-' | '×';
+type Operation = '+' | '-' | '×' | '/';
 
 type Question = {
   first: number;
@@ -17,18 +17,39 @@ function randomInt(min: number, max: number) {
 }
 
 function createQuestion(): Question {
-  const operations: Operation[] = ['+', '-', '×'];
+  const operations: Operation[] = ['+', '-', '×', '/'];
   const operation = operations[randomInt(0, operations.length - 1)];
-  let first = randomInt(0, 99);
-  let second = randomInt(0, 99);
+  let firstMin = 0;
+  let firstMax = 100;
+  if (operation === '×') {
+    firstMax = 10;
+  } else if (operation === '/') {
+    firstMin = 1;
+    firstMax = 10;
+  }  
+  let first = randomInt(firstMin, firstMax);
+  let secondMin = 0;
+  let secondMax = 100;
+  if (operation === '×') {
+    secondMax = 10;
+  } else if (operation === '/') {
+    secondMin = 1;
+    secondMax = 10;
+  }
+  let second = randomInt(secondMin, secondMax);
 
   if (operation === '-' && second > first) {
     [first, second] = [second, first];
   }
 
-  const answer =
+  let answer =
     operation === '+' ? first + second : operation === '-' ? first - second : first * second;
-  const maxAnswer = operation === '+' ? 198 : operation === '-' ? 99 : 9801;
+  if (operation === '/') {
+    let tmp = answer;
+    answer = first;
+    first = tmp;
+  }
+  const maxAnswer = operation === '+' ? 200 : operation === '/' ? 10 : 100;
   const choices = new Set([answer]);
 
   while (choices.size < 3) {
